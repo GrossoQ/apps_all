@@ -1,0 +1,393 @@
+import asyncio
+import telnetlib3
+import re
+import tkinter as tk
+from tkinter import ttk
+
+async def telnet_to_olt(olt, puerto, posicion): # OLT Inicial
+        
+    num_olt = f"{int(olt[0])}.{int(olt[1:])}"
+
+    host = f"10.225.{num_olt}"
+    port = 23
+    username = "zte"
+    password = "zte"
+    
+
+    try:
+        global nombre, telefono, serial_number, usuario, contraseña, contador_vlans
+        
+        # Crear una conexión Telnet
+        reader, writer = await telnetlib3.open_connection(host, port)
+        # Esperar a que aparezca el prompt de inicio de sesión
+        await asyncio.wait_for(reader.read(1000), timeout=1)
+        writer.write(username + "\n")
+        # Esperar a que aparezca el prompt de contraseña
+        await asyncio.wait_for(reader.read(1000), timeout=1)
+        writer.write(password + "\n")
+        
+        # Leer hasta que se encuentre el delimitador "#"
+        await reader.readuntil(b"#")
+        # Ejecuta comando name_tel
+        writer.write(f"show running-config interface gpon-onu_{puerto}:{posicion}" + "\n")
+        # Leer hasta que se encuentre el delimitador "#"
+        data = await reader.readuntil(b"#")
+        # Decodificar los datos leídos como una cadena
+        datos_str = data.decode()
+        # Definimos el patrón de expresión regular para buscar el nombre y el teléfono
+        patron_name_tel = r"name\s+(.+)\s+TEL\.\s+(\d+)"
+        # Buscamos el patrón en la salida
+        name_tel = re.search(patron_name_tel, datos_str, re.IGNORECASE)
+
+        # Si se encuentra el patrón, guardamos los datos en variables
+        if name_tel:
+            nombre = name_tel.group(1)
+            telefono = name_tel.group(2)
+        else:
+            return print("No se encontraron datos.")
+        
+        # Ejecuta comando ONU sn
+        writer.write(f"show gpon onu baseinfo gpon-olt_{puerto} {posicion}" + "\n")
+        # Leer hasta que se encuentre el delimitador "#"
+        data = await reader.readuntil(b"#")
+        # Decodificar los datos leídos como una cadena
+        datos_str = data.decode()
+        # Definimos el patrón de expresión regular para buscar el nombre y el teléfono
+        patron_sn = r"SN:(\w+)"
+        # Buscamos el patrón en la salida
+        sn = re.search(patron_sn, datos_str)
+
+        # Si se encuentra el patrón, guardamos los datos en variables
+        if sn:
+            serial_number = sn.group(1)
+        else:
+            return print("No se encontraron datos.")
+        
+        # Ejecuta comando usuario contraseña
+        writer.write(f"show onu running config gpon-onu_{puerto}:{posicion}" + "\n")
+        # Leer hasta que se encuentre el delimitador "#"
+        data = await reader.readuntil(b"#")
+        # Decodificar los datos leídos como una cadena
+        datos_str = data.decode()
+        # Definimos los patrones de expresión regular para buscar el usuario y la contraseña
+        patron_usuario = r"pppoe \d+ nat enable user (\w+)"
+        patron_contraseña = r"pppoe \d+ nat enable user \w+ password (\w+)"
+        # Definimos el patrón de expresión regular para buscar las VLAN
+        patron_vlan = r"vlan port eth_0/\d+ mode tag vlan (\d+)"
+        # Buscamos el patrón en la salida
+        resultado_usuario = re.search(patron_usuario, datos_str)
+        resultado_contraseña = re.search(patron_contraseña, datos_str)
+
+        # Si se encuentra el patrón, guardamos el usuario y la contraseña en variables
+        if resultado_usuario and resultado_contraseña:
+            usuario = resultado_usuario.group(1)
+            contraseña = resultado_contraseña.group(1)
+        else:
+            return output_text.insert(tk.END,"No se encontraron datos.")
+        
+        # Contamos las VLAN dentro de la parte indicada de la salida
+        vlans = re.findall(patron_vlan, datos_str)
+        contador_vlans = sum(3000 <= int(vlan) <= 3999 for vlan in vlans)
+        
+        return mostrar_texto()
+
+    except Exception as e:
+        return f"Error: {e}"
+    
+# Función para mostrar el texto en la ventana
+def mostrar_texto():
+    output_text.config(state=tk.NORMAL)  # Habilitar la edición del Text widget
+    output_text.delete("1.0", tk.END)    # Limpiar el Text widget
+    output_text.insert(tk.END, f"Nombre: {nombre}\n")
+    output_text.insert(tk.END, f"Teléfono: {telefono}\n")
+    output_text.insert(tk.END, f"SN: {serial_number}\n")
+    output_text.insert(tk.END, f"Usuario: {usuario}\n")
+    output_text.insert(tk.END, f"Contraseña: {contraseña}\n")
+    output_text.insert(tk.END, f"Vlans IPTV: {contador_vlans}\n")
+    output_text.config(state=tk.DISABLED)  # Deshabilitar la edición del Text widget
+
+
+async def enviar_comando(writer, reader, comando):
+    writer.write(comando + "\n")
+    await reader.readuntil(b"#")
+
+async def ejecutar_comandos(writer, reader, comandos):
+    for comando in comandos:
+        await enviar_comando(writer, reader, comando)    
+    
+
+async def telnet_to_olt2(olt, puerto, posicion): # OLT Destino
+        
+    num_olt = f"{int(olt[0])}.{int(olt[1:])}"
+
+    host = f"10.225.{num_olt}"
+    port = 23
+    username = "zte"
+    password = "zte"
+    
+    try:
+        # Crear una conexión Telnet
+        reader, writer = await telnetlib3.open_connection(host, port)
+        # Esperar a que aparezca el prompt de inicio de sesión
+        await asyncio.wait_for(reader.read(1000), timeout=1)
+        writer.write(username + "\n")
+        # Esperar a que aparezca el prompt de contraseña
+        await asyncio.wait_for(reader.read(1000), timeout=1)
+        writer.write(password + "\n")
+        
+        # Leer hasta que se encuentre el delimitador "#"
+        print (await reader.readuntil(b"#"))
+        
+        # Lista de comandos a ejecutar
+        comandos = [
+        "config t",
+        f"interface gpon-olt_{puerto}",
+        f"onu {posicion} type ZXHN-F680 sn {serial_number}",
+        "!",
+        f"interface gpon-onu_{puerto}:{posicion}",
+        f"registration-method sn {serial_number}",
+        "!",
+        "config t",
+        f"interface gpon-onu_{puerto}:{posicion}",
+        f"name {nombre} TEL. {telefono}",
+        "tcont 1 profile YABIRU_1G_BE",
+        "tcont 2 profile IPTV-F",
+        "gemport 1 tcont 1 queue 1",
+        "gemport 2 tcont 2 queue 1",
+        f"service-port 1 vport 1 user-vlan 1{olt} user-etype PPPOE vlan 1{olt}",
+        f"service-port 2 vport 2 user-vlan 3{olt} vlan 3{olt}",
+        "ip dhcp snooping enable vport 2",
+        "dhcpv4-l2-relay-agent enable vport 2",
+        "dhcpv4-l2-relay-agent trust true replace vport 2"
+        ]
+
+        # Ejecutar los comandos
+        await ejecutar_comandos(writer, reader, comandos)
+        
+        if contador_vlans == 1:
+            # Lista de comandos a ejecutar
+            comandos = [
+            "!",
+            f"pon-onu-mng gpon-onu_{puerto}:{posicion}",
+            f"service ppp gemport 1 iphost 1 cos 2 vlan 1{olt}",
+            f"service iptv gemport 2 cos 5 vlan 3{olt}",
+            f"pppoe 1 nat enable user {usuario} password {contraseña}",
+            f"vlan port eth_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/2 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/3 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/4 mode tag vlan 3{olt} pri 5",
+            f"vlan port wifi_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/5 mode tag vlan 1{olt} pri 2",
+            "dhcp-ip ethuni eth_0/1 from-onu",
+            "dhcp-ip ethuni eth_0/2 from-onu",
+            "dhcp-ip ethuni eth_0/3 from-onu",
+            "dhcp-ip ethuni eth_0/4 from-internet",
+            "security-mgmt 1 state enable ingress-type lan", 
+            "security-mgmt 2 state enable mode forward", 
+            "security-mgmt 2 start-src-ip 190.13.224.2 end-src-ip 190.13.224.2"
+            ]
+            
+            # Ejecutar los comandos
+            await ejecutar_comandos(writer, reader, comandos)
+            
+        elif contador_vlans == 2:
+            # Lista de comandos a ejecutar
+            comandos = [
+            "!",
+            f"pon-onu-mng gpon-onu_{puerto}:{posicion}",
+            f"service ppp gemport 1 iphost 1 cos 2 vlan 1{olt}",
+            f"service iptv gemport 2 cos 5 vlan 3{olt}",
+            f"pppoe 1 nat enable user {usuario} password {contraseña}",
+            f"vlan port eth_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/2 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/3 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/4 mode tag vlan 3{olt} pri 5",
+            f"vlan port wifi_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/5 mode tag vlan 1{olt} pri 2",
+            "dhcp-ip ethuni eth_0/1 from-onu",
+            "dhcp-ip ethuni eth_0/2 from-onu",
+            "dhcp-ip ethuni eth_0/3 from-internet",
+            "dhcp-ip ethuni eth_0/4 from-internet",
+            "security-mgmt 1 state enable ingress-type lan", 
+            "security-mgmt 2 state enable mode forward", 
+            "security-mgmt 2 start-src-ip 190.13.224.2 end-src-ip 190.13.224.2"
+            ]
+            
+            # Ejecutar los comandos
+            await ejecutar_comandos(writer, reader, comandos)
+        
+        elif contador_vlans == 3:
+            # Lista de comandos a ejecutar
+            comandos = [
+            "!",
+            f"pon-onu-mng gpon-onu_{puerto}:{posicion}",
+            f"service ppp gemport 1 iphost 1 cos 2 vlan 1{olt}",
+            f"service iptv gemport 2 cos 5 vlan 3{olt}",
+            f"pppoe 1 nat enable user {usuario} password {contraseña}",
+            f"vlan port eth_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/2 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/3 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/4 mode tag vlan 3{olt} pri 5",
+            f"vlan port wifi_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/5 mode tag vlan 1{olt} pri 2",
+            "dhcp-ip ethuni eth_0/1 from-onu",
+            "dhcp-ip ethuni eth_0/2 from-internet",
+            "dhcp-ip ethuni eth_0/3 from-internet",
+            "dhcp-ip ethuni eth_0/4 from-internet",
+            "security-mgmt 1 state enable ingress-type lan",
+            "security-mgmt 2 state enable mode forward",
+            "security-mgmt 2 start-src-ip 190.13.224.2 end-src-ip 190.13.224.2"
+            ]
+            
+            # Ejecutar los comandos
+            await ejecutar_comandos(writer, reader, comandos)
+            
+        elif contador_vlans == 4:
+            # Lista de comandos a ejecutar
+            comandos = [
+            "!",
+            f"pon-onu-mng gpon-onu_{puerto}:{posicion}",
+            f"service ppp gemport 1 iphost 1 cos 2 vlan 1{olt}",
+            f"service iptv gemport 2 cos 5 vlan 3{olt}",
+            f"pppoe 1 nat enable user {usuario} password {contraseña}",
+            f"vlan port eth_0/1 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/2 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/3 mode tag vlan 3{olt} pri 5",
+            f"vlan port eth_0/4 mode tag vlan 3{olt} pri 5",
+            f"vlan port wifi_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/5 mode tag vlan 1{olt} pri 2",
+            "dhcp-ip ethuni eth_0/1 from-internet",
+            "dhcp-ip ethuni eth_0/2 from-internet",
+            "dhcp-ip ethuni eth_0/3 from-internet",
+            "dhcp-ip ethuni eth_0/4 from-internet",
+            "security-mgmt 1 state enable ingress-type lan", 
+            "security-mgmt 2 state enable mode forward", 
+            "security-mgmt 2 start-src-ip 190.13.224.2 end-src-ip 190.13.224.2"
+            ]
+            # Ejecutar los comandos
+            await ejecutar_comandos(writer, reader, comandos)
+            
+        else:
+            # Lista de comandos a ejecutar
+            comandos = [
+            "!",
+            f"pon-onu-mng gpon-onu_{puerto}:{posicion}",
+            f"service ppp gemport 1 iphost 1 cos 2 vlan 1{olt}",
+            f"service iptv gemport 2 cos 5 vlan 3{olt}",
+            f"pppoe 1 nat enable user {usuario} password {contraseña}",
+            f"vlan port eth_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/2 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/3 mode tag vlan 1{olt} pri 2",
+            f"vlan port eth_0/4 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/1 mode tag vlan 1{olt} pri 2",
+            f"vlan port wifi_0/5 mode tag vlan 1{olt} pri 2",
+            "dhcp-ip ethuni eth_0/1 from-onu",
+            "dhcp-ip ethuni eth_0/2 from-onu",
+            "dhcp-ip ethuni eth_0/3 from-onu",
+            "dhcp-ip ethuni eth_0/4 from-onu",
+            "security-mgmt 1 state enable ingress-type lan", 
+            "security-mgmt 2 state enable mode forward", 
+            "security-mgmt 2 start-src-ip 190.13.224.2 end-src-ip 190.13.224.2"
+            ]
+            
+            # Ejecutar los comandos
+            await ejecutar_comandos(writer, reader, comandos)
+            
+        comandos = [
+            "!",
+            "config t",
+            f"igmp mvlan 3{olt} receive-port gpon-onu_{puerto}:{posicion} vport 2"]
+        
+        # Ejecutar los comandos
+        await ejecutar_comandos(writer, reader, comandos)
+            
+    except Exception as e:
+        return f"Error: {e}"
+    
+
+# Ejecutar la función
+async def main(olt_1, puerto_1, posicion_1, olt_2, puerto_2, posicion_2):
+    await telnet_to_olt(olt_1, puerto_1, posicion_1)
+    await telnet_to_olt2(olt_2, puerto_2, posicion_2)
+    
+async def on_connect():
+    olt_1 = olt_entry_1.get()
+    puerto_1 = puerto_entry_1.get()
+    posicion_1 = posicion_entry_1.get()
+    olt_2 = olt_entry_2.get()
+    puerto_2 = puerto_entry_2.get()
+    posicion_2 = posicion_entry_2.get()
+    await main(olt_1, puerto_1, posicion_1, olt_2, puerto_2, posicion_2)
+    
+
+root = tk.Tk()
+root.title("APP MIGRACION")
+
+# Configurar el icono
+icon_path = "C:/Users/Grosso Quimey/Desktop/APP Python/APP OLT Telnet/APP Migracion 1.1/IPTV.ico"
+root.iconbitmap(default=icon_path)
+
+# Configurar el tamaño de la ventana
+root.geometry("500x430")
+
+# Configurar el estilo del tema
+style = ttk.Style()
+style.theme_use("clam")
+
+# Configurar colores y fuentes personalizadas
+root.configure(bg="#2E3B4E")
+
+# Marco para la sección de OLT Inicial
+frame_olt_inicial = tk.Frame(root, bg="#2E3B4E")
+frame_olt_inicial.grid(row=0, column=0, padx=10, pady=10)
+
+label_1 = tk.Label(frame_olt_inicial, text="OLT Inicial", font=("Arial", 12), fg="white", bg="#2E3B4E")
+label_1.grid(row=0, column=0, padx=5, pady=5)
+
+# Aquí van los widgets para la entrada de datos de la OLT Inicial
+olt_label_1 = tk.Label(frame_olt_inicial, text="OLT:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+olt_label_1.grid(row=1, column=0, padx=5, pady=5)
+olt_entry_1 = tk.Entry(frame_olt_inicial)
+olt_entry_1.grid(row=1, column=1, padx=5, pady=5)
+
+puerto_label_1 = tk.Label(frame_olt_inicial, text="Puerto:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+puerto_label_1.grid(row=2, column=0, padx=5, pady=5)
+puerto_entry_1 = tk.Entry(frame_olt_inicial)
+puerto_entry_1.grid(row=2, column=1, padx=5, pady=5)
+
+posicion_label_1 = tk.Label(frame_olt_inicial, text="Posición:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+posicion_label_1.grid(row=3, column=0, padx=5, pady=5)
+posicion_entry_1 = tk.Entry(frame_olt_inicial)
+posicion_entry_1.grid(row=3, column=1, padx=5, pady=5)
+
+# Marco para la sección de OLT Destino
+frame_olt_destino = tk.Frame(root, bg="#2E3B4E")
+frame_olt_destino.grid(row=0, column=1, padx=10, pady=10)
+
+label_2 = tk.Label(frame_olt_destino, text="OLT Destino", font=("Arial", 12), fg="white", bg="#2E3B4E")
+label_2.grid(row=0, column=0, padx=5, pady=5)
+
+# Aquí van los widgets para la entrada de datos de la OLT Destino
+olt_label_2 = tk.Label(frame_olt_destino, text="OLT:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+olt_label_2.grid(row=1, column=0, padx=5, pady=5)
+olt_entry_2 = tk.Entry(frame_olt_destino)
+olt_entry_2.grid(row=1, column=1, padx=5, pady=5)
+
+puerto_label_2 = tk.Label(frame_olt_destino, text="Puerto:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+puerto_label_2.grid(row=2, column=0, padx=5, pady=5)
+puerto_entry_2 = tk.Entry(frame_olt_destino)
+puerto_entry_2.grid(row=2, column=1, padx=5, pady=5)
+
+posicion_label_2 = tk.Label(frame_olt_destino, text="Posición:", font=("Arial", 12), fg="white", bg="#2E3B4E")
+posicion_label_2.grid(row=3, column=0, padx=5, pady=5)
+posicion_entry_2 = tk.Entry(frame_olt_destino)
+posicion_entry_2.grid(row=3, column=1, padx=5, pady=5)
+
+connect_button = tk.Button(root, text="Migrar", command=lambda: asyncio.run(on_connect()), bg="gray", fg="white", font=("Arial", 12), padx=10, pady=5, relief="solid", borderwidth=1)
+connect_button.grid(row=1, column=0, columnspan=2, pady=10)
+
+# Ventana de salida de datos
+output_text = tk.Text(root, height=10, width=50, bg="white", fg="black", font=("Arial", 12))
+output_text.grid(row=2, column=0, columnspan=2, pady=10)
+
+root.mainloop()

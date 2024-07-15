@@ -1,0 +1,3 @@
+COMANDO PARA CREAR EL .EXE
+
+pyinstaller --onefile --noconsole --icon=iptv-icon.ico --add-data "certificado.crt:." --add-data "certificado.key:." STBSN.py

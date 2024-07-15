@@ -1,0 +1,4 @@
+
+COMANDO PARA CREAR EL .EXE
+
+pyinstaller --onefile --noconsole --icon=IPTV.ico --add-data "certificado.crt:." --add-data "certificado.key:." APPListas.py
