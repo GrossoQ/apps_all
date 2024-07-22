@@ -24,7 +24,9 @@ def migrar_M10():
 
     # Configuración del navegador
     options = webdriver.ChromeOptions()
-    options.add_argument("--start")
+    options.add_argument("--headless")
+    options.add_argument("--log-level=3")  # Esto minimiza los mensajes de advertencia en la consola del navegador
+    #options.add_argument("--start")  # Ejecuta el navegador con entorno grafico
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--ignore-ssl-errors')
     driver = webdriver.Chrome(options=options)
